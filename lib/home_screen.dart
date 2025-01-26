@@ -5,7 +5,7 @@ import 'utils/quotes.dart';
 import 'widgets/home_widgets/CustomCarouel.dart';
 import 'widgets/home_widgets/emergency.dart';
 import 'widgets/live_safe.dart';
-
+import 'widgets/home_widgets/safehome/SafeHome.dart';
 class HomeScreen extends StatefulWidget {
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -59,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 LiveSafe(),
+                SafeHome(),
               ],
             ),
           ),

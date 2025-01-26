@@ -194,7 +194,17 @@ class _LiveSafeState extends State<LiveSafe> {
                 Position position = await _getCurrentLocation();
                 findNearbyPoliceStations(position);
               },
-              child: Text('Find Nearby Police Stations'),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    'assets/bus-stop.png',
+                    height: 32,
+                  ),
+                  SizedBox(width: 8), // Add some space between the image and text
+                  Text('Find Nearby Police Stations'),
+                ],
+              ),
             ),
             SizedBox(height: 20),
             ...policeStations,
@@ -206,7 +216,17 @@ class _LiveSafeState extends State<LiveSafe> {
                 Position position = await _getCurrentLocation();
                 findNearbyHospitals(position);
               },
-              child: Text('Find Nearby Hospitals'),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    'assets/hospital.png',
+                    height: 32,
+                  ),
+                  SizedBox(width: 8), // Add some space between the image and text
+                  Text('Find Nearby Hospitals near by'),
+                ],
+              ),
             ),
             SizedBox(height: 20),
             ...hospitals,
