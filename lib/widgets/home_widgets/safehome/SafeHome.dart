@@ -1,8 +1,10 @@
-import 'package:background_sms/background_sms.dart';
-import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/material.dart' show AlertDialog, AppBar, BuildContext, Center, Colors, Column, EdgeInsets, ElevatedButton, FontWeight, MainAxisAlignment, Navigator, Scaffold, ScaffoldMessenger, SizedBox, SnackBar, State, StatefulWidget, Text, TextAlign, TextButton, TextStyle, Widget, showDialog;
 import 'package:geolocator/geolocator.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:shake/shake.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'dart:async';
+
+
 
 class SafeHome extends StatefulWidget {
   @override
@@ -10,60 +12,52 @@ class SafeHome extends StatefulWidget {
 }
 
 class _SafeHomeState extends State<SafeHome> {
-  // Define the contacts to send the alert
-  List<String> contacts = [
-    "+917671087632",
-    "+919398871849",
-    "+917842661978",
-    "+918309426011",
-    "+919502467614"
-  ];
+  ShakeDetector? detector;
+  bool isShakeTriggered = false;
+  Timer? _cancelTimer;
 
-  // Method to get current location
-  Future<Position> _getCurrentLocation() async {
-    Position position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
+  @override
+  void initState() {
+    super.initState();
+    _initializeShakeDetector();
+  }
+
+  void _initializeShakeDetector() {
+    detector = ShakeDetector.autoStart(
+      onPhoneShake: () {
+        if (!isShakeTriggered) {
+          isShakeTriggered = true;
+          _showCancelAlertDialog();
+        }
+      },
+      shakeThresholdGravity: 2.7, // Adjust sensitivity if needed
+      minimumShakeCount: 3, // Require 3 shakes before triggering
+      shakeSlopTimeMS: 500, // Time between shakes
+      shakeCountResetTime: 3000, // Reset counter after 3 seconds
     );
-    return position;
   }
 
-  Future<void> sendSOSAlert(Position position) async {
-    String locationUrl = "https://www.google.com/maps?q=${position.latitude},${position.longitude}";
-    String message = "I am in danger! Please help. My location: $locationUrl";
+  void _showCancelAlertDialog() {
+    _cancelTimer = Timer(Duration(seconds: 5), () {
+      _sendSOSAlert();
+      isShakeTriggered = false; // Reset trigger after sending alert
+    });
 
-    for (String contact in contacts) {
-      // Send SMS to the contact
-      SmsStatus result = await BackgroundSms.sendMessage(phoneNumber: contact, message: message);
-
-      // Log the result for each contact
-      if (result == SmsStatus.sent) {
-        print("SMS sent successfully to $contact");
-      } else {
-        print("Failed to send SMS to $contact");
-      }
-
-      // Optional: Add a slight delay to avoid overlapping operations
-      await Future.delayed(Duration(milliseconds: 500));
-    }
-
-    // Show success message after all messages are attempted
-    Fluttertoast.showToast(msg: "SOS alerts sent!");
-  }
-
-  // Function to show modal when the card is tapped
-  void showModelSafeHome(BuildContext context) {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      barrierDismissible: false, // Prevents accidental dismissal
+      builder: (context) {
         return AlertDialog(
-          title: Text('Safe Home'),
-          content: Text('Sending SOS alert to your contacts'),
-          actions: <Widget>[
+          title: Text("Emergency Alert"),
+          content: Text("You shook the phone! Sending an alert in 5 seconds. Click Cancel if this was a mistake."),
+          actions: [
             TextButton(
               onPressed: () {
+                _cancelTimer?.cancel();
+                isShakeTriggered = false;
                 Navigator.of(context).pop();
               },
-              child: Text('Close'),
+              child: Text("Cancel"),
             ),
           ],
         );
@@ -71,47 +65,85 @@ class _SafeHomeState extends State<SafeHome> {
     );
   }
 
+  Future<void> _sendSOSAlert() async {
+    List<String> emergencyContacts = [
+      "+917671087632"
+          "+919398871849",
+      "+917842661978",
+      "+918309426011",
+      "+919502467614",
+// Add your contacts here
+    ];
+
+    String alertMessage = "🚨 EMERGENCY ALERT! 🚨\nI am in danger. Please help me.\nMy location: ";
+
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      String locationUrl =
+          "https://www.google.com/maps/search/?api=1&query=${position.latitude},${position.longitude}";
+
+      String fullMessage = "$alertMessage $locationUrl";
+
+      for (String contact in emergencyContacts) {
+        Uri smsUri = Uri.parse("sms:$contact?body=${Uri.encodeComponent(fullMessage)}");
+
+        if (await canLaunchUrl(smsUri)) {
+          await launchUrl(smsUri);
+        } else {
+          print("Could not send SMS to $contact");
+        }
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Emergency alert sent successfully!")),
+      );
+    } catch (e) {
+      print("Error getting location: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to retrieve location.")),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    detector?.stopListening();
+    _cancelTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () async {
-        Position position = await _getCurrentLocation();
-        sendSOSAlert(position);
-        showModelSafeHome(context);
-      },
-      child: Card(
-        elevation: 5,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Container(
-          height: 180,
-          width: MediaQuery.of(context).size.width * 0.8,
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center, // Center the text
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ListTile(
-                      title: Text("Send Location"),
-                      subtitle: Text("Share Location"),
-                    ),
-                  ],
-                ),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Safe Home"),
+        backgroundColor: Colors.pinkAccent,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              "Shake your phone 3 times to send an SOS alert.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _sendSOSAlert,
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                backgroundColor: Colors.red,
               ),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Image.asset(
-                  'assets/route.jpg',
-                  fit: BoxFit.cover,
-                  height: 180,
-                  width: MediaQuery.of(context).size.width * 0.4,
-                ),
+              child: Text(
+                "Send SOS Alert",
+                style: TextStyle(fontSize: 20, color: Colors.white),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
