@@ -1,10 +1,8 @@
-import 'package:flutter/material.dart' show AlertDialog, AppBar, BuildContext, Center, Colors, Column, EdgeInsets, ElevatedButton, FontWeight, MainAxisAlignment, Navigator, Scaffold, ScaffoldMessenger, SizedBox, SnackBar, State, StatefulWidget, Text, TextAlign, TextButton, TextStyle, Widget, showDialog;
+import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shake/shake.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:async';
-
-
 
 class SafeHome extends StatefulWidget {
   @override
@@ -12,9 +10,9 @@ class SafeHome extends StatefulWidget {
 }
 
 class _SafeHomeState extends State<SafeHome> {
-  ShakeDetector? detector;
-  bool isShakeTriggered = false;
-  Timer? _cancelTimer;
+  ShakeDetector? _shakeDetector;
+  Timer? _sosCancelTimer;
+  bool _isShakeTriggered = false;
 
   @override
   void initState() {
@@ -23,43 +21,61 @@ class _SafeHomeState extends State<SafeHome> {
   }
 
   void _initializeShakeDetector() {
-    detector = ShakeDetector.autoStart(
-      onPhoneShake: () {
-        if (!isShakeTriggered) {
-          isShakeTriggered = true;
-          _showCancelAlertDialog();
-        }
-      },
+    _shakeDetector = ShakeDetector.autoStart(
+      onPhoneShake: _handleShakeEvent,
       shakeThresholdGravity: 2.7, // Adjust sensitivity if needed
-      minimumShakeCount: 3, // Require 3 shakes before triggering
-      shakeSlopTimeMS: 500, // Time between shakes
-      shakeCountResetTime: 3000, // Reset counter after 3 seconds
     );
   }
 
-  void _showCancelAlertDialog() {
-    _cancelTimer = Timer(Duration(seconds: 5), () {
-      _sendSOSAlert();
-      isShakeTriggered = false; // Reset trigger after sending alert
+  void _handleShakeEvent() {
+    if (_isShakeTriggered) return; // Prevent multiple triggers
+
+    setState(() {
+      _isShakeTriggered = true;
     });
+
+    // Show confirmation dialog with 5-second countdown
+    _showShakeConfirmationDialog();
+  }
+
+  void _showShakeConfirmationDialog() {
+    int countdown = 5;
 
     showDialog(
       context: context,
-      barrierDismissible: false, // Prevents accidental dismissal
+      barrierDismissible: false, // Prevent dismissing by tapping outside
       builder: (context) {
-        return AlertDialog(
-          title: Text("Emergency Alert"),
-          content: Text("You shook the phone! Sending an alert in 5 seconds. Click Cancel if this was a mistake."),
-          actions: [
-            TextButton(
-              onPressed: () {
-                _cancelTimer?.cancel();
-                isShakeTriggered = false;
-                Navigator.of(context).pop();
-              },
-              child: Text("Cancel"),
-            ),
-          ],
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            _sosCancelTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+              if (countdown > 1) {
+                setDialogState(() {
+                  countdown--;
+                });
+              } else {
+                timer.cancel();
+                Navigator.of(context).pop(); // Close dialog
+                _sendSOSAlert(); // Send alert if not canceled
+              }
+            });
+
+            return AlertDialog(
+              title: Text("Emergency Alert"),
+              content: Text("Sending SOS in $countdown seconds.\nPress 'Cancel' to stop."),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    _sosCancelTimer?.cancel();
+                    setState(() {
+                      _isShakeTriggered = false;
+                    });
+                    Navigator.of(context).pop(); // Close dialog
+                  },
+                  child: Text("Cancel", style: TextStyle(color: Colors.red)),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -67,12 +83,11 @@ class _SafeHomeState extends State<SafeHome> {
 
   Future<void> _sendSOSAlert() async {
     List<String> emergencyContacts = [
-      "+917671087632"
-          "+919398871849",
+      "+917671087632",
+      "+919398871849",
       "+917842661978",
       "+918309426011",
       "+919502467614",
-// Add your contacts here
     ];
 
     String alertMessage = "🚨 EMERGENCY ALERT! 🚨\nI am in danger. Please help me.\nMy location: ";
@@ -90,8 +105,8 @@ class _SafeHomeState extends State<SafeHome> {
       for (String contact in emergencyContacts) {
         Uri smsUri = Uri.parse("sms:$contact?body=${Uri.encodeComponent(fullMessage)}");
 
-        if (await canLaunchUrl(smsUri)) {
-          await launchUrl(smsUri);
+        if (await canLaunchUrl(smsUri, mode: LaunchMode.externalApplication)) {
+          await launchUrl(smsUri, mode: LaunchMode.externalApplication);
         } else {
           print("Could not send SMS to $contact");
         }
@@ -110,42 +125,56 @@ class _SafeHomeState extends State<SafeHome> {
 
   @override
   void dispose() {
-    detector?.stopListening();
-    _cancelTimer?.cancel();
+    _shakeDetector?.stopListening();
+    _sosCancelTimer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Safe Home"),
-        backgroundColor: Colors.pinkAccent,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              "Shake your phone 3 times to send an SOS alert.",
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    return Center(
+      child: InkWell(
+        onTap: _sendSOSAlert, // Manually send SOS on tap
+        child: Card(
+          elevation: 5,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            height: 180, // Fixed height to prevent infinite constraints
+            width: MediaQuery.of(context).size.width * 0.8,
+            child: Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 180, // Constrain height to prevent infinite size issue
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ListTile(
+                          title: Text("Send Location"),
+                          subtitle: Text("Tap to share location"),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Image.asset(
+                    'assets/route.jpg',
+                    fit: BoxFit.cover,
+                    height: 180, // Ensure image does not take infinite height
+                    width: MediaQuery.of(context).size.width * 0.4,
+                  ),
+                ),
+              ],
             ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _sendSOSAlert,
-              style: ElevatedButton.styleFrom(
-                padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                backgroundColor: Colors.red,
-              ),
-              child: Text(
-                "Send SOS Alert",
-                style: TextStyle(fontSize: 20, color: Colors.white),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
+
